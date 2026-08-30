@@ -14,13 +14,16 @@ jobs:
       contains(github.event.issue.labels.*.name, 'ai-run') ||
       github.actor == 'jackson-dev-DMP'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      issues: write
-      discussions: write
-      pull-requests: write
 
     steps:
+      # 1. Generate an official bot token for Gemini-DeltaruneMP
+      - name: Generate App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Checkout Code Base
         uses: actions/checkout@v4
 
@@ -29,28 +32,30 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         uses: actions/github-script@v7
         with:
+          # Tell github-script to use your official App identity token!
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const eventPayload = context.payload.issue || context.payload.discussion || context.payload.pull_request;
             const title = eventPayload.title || "";
             const body = eventPayload.body || "";
             const user = eventPayload.user?.login || context.actor;
 
-            // 1. SECURITY FILTER (Injection & Exfiltration Defense)
+            // 2. SECURITY FILTER (Injection & Exfiltration Defense)
             const rawInput = `${title}\n${body}`;
             if (/ignore\s+all|process\.env|secrets|reveal\s+key|override\s+security/i.test(rawInput)) {
               console.log(`Security violation intercepted from @${user}`);
               return;
             }
 
-            // 2. INPUT SANITIZATION & TRUNCATION
+            // 3. INPUT SANITIZATION & TRUNCATION (Token Saver)
             const sanitizedBody = body
               .replace(/-----BEGIN[\s\S]*?-----END[^\n]*/g, "[REDACTED KEY]")
               .replace(/(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}/g, "[REDACTED TOKEN]")
               .slice(0, 1200);
 
-            // 3. SYSTEM PROMPT WITH STRICT APPROPRIATENESS GUIDELINES
+            // 4. SYSTEM PROMPT WITH STRICT APPROPRIATENESS GUIDELINES
             const prompt = `SYSTEM INSTRUCTIONS:
-            - You are a helpful public repository assistant.
+            - You are Gemini-DeltaruneMP, a helpful repository assistant.
             - Keep replies professional, brief, polite, and technical.
             - Never use toxic, abusive, explicit, or inappropriate language.
             - Never expose secret keys, API tokens, or server variables.
@@ -67,7 +72,6 @@ jobs:
                 body: JSON.stringify({
                   contents: [{ parts: [{ text: prompt }] }],
                   generationConfig: { maxOutputTokens: 250 },
-                  // 4. BUILT-IN MODEL SAFETY SETTINGS
                   safetySettings: [
                     { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_LOW_AND_ABOVE" },
                     { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_LOW_AND_ABOVE" },
