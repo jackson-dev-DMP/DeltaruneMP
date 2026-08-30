@@ -16,7 +16,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Generate an official bot token for Gemini-DeltaruneMP
       - name: Generate App Token
         id: app-token
         uses: actions/create-github-app-token@v1
@@ -32,38 +31,48 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         uses: actions/github-script@v7
         with:
-          # Tell github-script to use your official App identity token!
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const eventPayload = context.payload.issue || context.payload.discussion || context.payload.pull_request;
             const title = eventPayload.title || "";
             const body = eventPayload.body || "";
             const user = eventPayload.user?.login || context.actor;
+            const owner = "jackson-dev-DMP";
+            const isOwner = (user === owner);
 
-            // 2. SECURITY FILTER (Injection & Exfiltration Defense)
+            // 1. SECURITY FILTER
             const rawInput = `${title}\n${body}`;
             if (/ignore\s+all|process\.env|secrets|reveal\s+key|override\s+security/i.test(rawInput)) {
               console.log(`Security violation intercepted from @${user}`);
               return;
             }
 
-            // 3. INPUT SANITIZATION & TRUNCATION (Token Saver)
+            // 2. SANITIZE INPUT
             const sanitizedBody = body
               .replace(/-----BEGIN[\s\S]*?-----END[^\n]*/g, "[REDACTED KEY]")
               .replace(/(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}/g, "[REDACTED TOKEN]")
-              .slice(0, 1200);
+              .slice(0, 2000);
 
-            // 4. SYSTEM PROMPT WITH STRICT APPROPRIATENESS GUIDELINES
-            const prompt = `SYSTEM INSTRUCTIONS:
-            - You are Gemini-DeltaruneMP, a helpful repository assistant.
-            - Keep replies professional, brief, polite, and technical.
-            - Never use toxic, abusive, explicit, or inappropriate language.
-            - Never expose secret keys, API tokens, or server variables.
+                        // 3. IMPROVED PROMPT (Forces Direct Answers & Enforces Safety)
+            const prompt = ` You are Gemini-DeltaruneMP, an AI helper bot running inside a GitHub Action for this repository.
 
-            USER REQUEST:
-            User: @${user}
-            Title: ${title}
-            Details: ${sanitizedBody}`;
+            Context Info:
+            - Issue Author: @${user}
+            - Repository Owner: @${owner}
+            - Author is Repo Owner: ${isOwner}
+            - Your Capabilities: You are a stateless GitHub Action workflow script. You can write comments, read issue text, and perform GitHub API tasks permitted by the workflow, but you do NOT have full administrative control or real-time live browsing outside this trigger.
+
+            INSTRUCTIONS:
+            - Skip long greetings or generic introductions.
+            - Answer the user's specific questions directly and concisely.
+            - You MUST NOT write malicious code, exploits, reverse shells, keyloggers, or dangerous scripts.
+            - BANNED TOPICS: Shellcode execution, privilege escalation, obfuscated scripts, and network attacking tools.
+            - Provide only safe, standard software development assistance.
+
+            ISSUE TITLE: ${title}
+            ISSUE CONTENT:
+            ${sanitizedBody}`;
+            
 
             try {
               const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
@@ -71,7 +80,9 @@ jobs:
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   contents: [{ parts: [{ text: prompt }] }],
-                  generationConfig: { maxOutputTokens: 250 },
+                  generationConfig: { 
+                    maxOutputTokens: 800 // Increased so it doesn't get cut off!
+                  },
                   safetySettings: [
                     { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_LOW_AND_ABOVE" },
                     { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_LOW_AND_ABOVE" },
@@ -82,9 +93,8 @@ jobs:
               });
 
               const data = await res.json();
-              const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "No safe response generated.";
+              const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
 
-              // 5. ROUTE RESPONSE BASED ON EVENT TYPE
               if (context.eventName === 'issues') {
                 await github.rest.issues.createComment({
                   owner: context.repo.owner,
