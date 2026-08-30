@@ -63,12 +63,14 @@ jobs:
             Details: ${sanitizedBody}`;
 
             try {
-              const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+                            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   contents: [{ parts: [{ text: prompt }] }],
-                  generationConfig: { maxOutputTokens: 800 },
+                  generationConfig: { 
+                    maxOutputTokens: 1200 // Increased limit to prevent truncation
+                  },
                   safetySettings: [
                     { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
                     { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
@@ -77,7 +79,7 @@ jobs:
                   ]
                 })
               });
-
+              
               const data = await res.json();
               console.log("API Response:", JSON.stringify(data));
 
