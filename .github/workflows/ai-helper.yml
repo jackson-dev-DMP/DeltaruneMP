@@ -1,57 +1,103 @@
-name: Gemini Issue Helper
+name: Gemini Universal Helper
 
 on:
   issues:
+    types: [opened, labeled]
+  discussion:
+    types: [created]
+  pull_request_target:
     types: [opened]
 
 jobs:
-  reply:
+  gemini-assistant:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'ai-run') ||
+      github.actor == 'jackson-dev-DMP'
     runs-on: ubuntu-latest
     permissions:
+      contents: write
       issues: write
+      discussions: write
+      pull-requests: write
 
     steps:
-      - name: Ask Gemini and Comment
+      - name: Checkout Code Base
+        uses: actions/checkout@v4
+
+      - name: Process with Gemini 3.6 Flash
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         uses: actions/github-script@v7
         with:
           script: |
-            const title = context.payload.issue.title;
-            const body = context.payload.issue.body || "";
-            const user = context.payload.issue.user.login;
-            
-            const prompt = `You are a helpful assistant for my repository. The issue author is '${user}'. The repo owner's username is jackson-dev-DMP. If '${user}' matches jackson-dev-DMP, you are talking to the owner! Answer this GitHub issue titled '${title}'. Body: ${body}`;
+            const eventPayload = context.payload.issue || context.payload.discussion || context.payload.pull_request;
+            const title = eventPayload.title || "";
+            const body = eventPayload.body || "";
+            const user = eventPayload.user?.login || context.actor;
+
+            // 1. SECURITY FILTER (Injection & Exfiltration Defense)
+            const rawInput = `${title}\n${body}`;
+            if (/ignore\s+all|process\.env|secrets|reveal\s+key|override\s+security/i.test(rawInput)) {
+              console.log(`Security violation intercepted from @${user}`);
+              return;
+            }
+
+            // 2. INPUT SANITIZATION & TRUNCATION
+            const sanitizedBody = body
+              .replace(/-----BEGIN[\s\S]*?-----END[^\n]*/g, "[REDACTED KEY]")
+              .replace(/(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}/g, "[REDACTED TOKEN]")
+              .slice(0, 1200);
+
+            // 3. SYSTEM PROMPT WITH STRICT APPROPRIATENESS GUIDELINES
+            const prompt = `SYSTEM INSTRUCTIONS:
+            - You are a helpful public repository assistant.
+            - Keep replies professional, brief, polite, and technical.
+            - Never use toxic, abusive, explicit, or inappropriate language.
+            - Never expose secret keys, API tokens, or server variables.
+
+            USER REQUEST:
+            User: @${user}
+            Title: ${title}
+            Details: ${sanitizedBody}`;
 
             try {
               const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  contents: [{ parts: [{ text: prompt }] }]
+                  contents: [{ parts: [{ text: prompt }] }],
+                  generationConfig: { maxOutputTokens: 250 },
+                  // 4. BUILT-IN MODEL SAFETY SETTINGS
+                  safetySettings: [
+                    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_LOW_AND_ABOVE" },
+                    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_LOW_AND_ABOVE" },
+                    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_LOW_AND_ABOVE" },
+                    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_LOW_AND_ABOVE" }
+                  ]
                 })
               });
 
               const data = await res.json();
-              console.log("Full API Response:", JSON.stringify(data));
+              const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "No safe response generated.";
 
-              let replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-              if (!replyText) {
-                if (data.error) {
-                  replyText = `API Error: ${data.error.message}`;
-                } else {
-                  replyText = "Sorry, no response text was returned by the API.";
-                }
+              // 5. ROUTE RESPONSE BASED ON EVENT TYPE
+              if (context.eventName === 'issues') {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: reply
+                });
+              } else if (context.eventName === 'pull_request_target') {
+                await github.rest.pulls.createReview({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: context.issue.number,
+                  body: reply,
+                  event: 'COMMENT'
+                });
               }
-
-              await github.rest.issues.createComment({
-                issue_number: context.issue.number,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: replyText
-              });
             } catch (err) {
-              console.error("Workflow Execution Error:", err);
+              console.error("Execution error:", err);
             }
             
