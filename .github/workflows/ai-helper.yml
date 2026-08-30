@@ -40,39 +40,27 @@ jobs:
             const owner = "jackson-dev-DMP";
             const isOwner = (user === owner);
 
-            // 1. SECURITY FILTER
-            const rawInput = `${title}\n${body}`;
-            if (/ignore\s+all|process\.env|secrets|reveal\s+key|override\s+security/i.test(rawInput)) {
-              console.log(`Security violation intercepted from @${user}`);
-              return;
-            }
-
-            // 2. SANITIZE INPUT
+            // 1. INPUT SANITIZATION
             const sanitizedBody = body
               .replace(/-----BEGIN[\s\S]*?-----END[^\n]*/g, "[REDACTED KEY]")
               .replace(/(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}/g, "[REDACTED TOKEN]")
               .slice(0, 2000);
 
-                        // 3. IMPROVED PROMPT (Forces Direct Answers & Enforces Safety)
-            const prompt = ` You are Gemini-DeltaruneMP, an AI helper bot running inside a GitHub Action for this repository.
+            // 2. SYSTEM PROMPT
+            const prompt = `You are Gemini-DeltaruneMP, an AI helper bot running inside a GitHub Action for this repository.
 
             Context Info:
             - Issue Author: @${user}
             - Repository Owner: @${owner}
             - Author is Repo Owner: ${isOwner}
-            - Your Capabilities: You are a stateless GitHub Action workflow script. You can write comments, read issue text, and perform GitHub API tasks permitted by the workflow, but you do NOT have full administrative control or real-time live browsing outside this trigger.
 
             INSTRUCTIONS:
-            - Skip long greetings or generic introductions.
             - Answer the user's specific questions directly and concisely.
-            - You MUST NOT write malicious code, exploits, reverse shells, keyloggers, or dangerous scripts.
-            - BANNED TOPICS: Shellcode execution, privilege escalation, obfuscated scripts, and network attacking tools.
-            - Provide only safe, standard software development assistance.
+            - Do not generate malicious or harmful code.
 
-            ISSUE TITLE: ${title}
-            ISSUE CONTENT:
-            ${sanitizedBody}`;
-            
+            USER QUESTION:
+            Title: ${title}
+            Details: ${sanitizedBody}`;
 
             try {
               const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
@@ -80,20 +68,23 @@ jobs:
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   contents: [{ parts: [{ text: prompt }] }],
-                  generationConfig: { 
-                    maxOutputTokens: 800 // Increased so it doesn't get cut off!
-                  },
+                  generationConfig: { maxOutputTokens: 800 },
                   safetySettings: [
-                    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_LOW_AND_ABOVE" },
-                    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_LOW_AND_ABOVE" },
-                    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_LOW_AND_ABOVE" },
-                    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_LOW_AND_ABOVE" }
+                    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+                    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+                    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+                    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" }
                   ]
                 })
               });
 
               const data = await res.json();
-              const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
+              console.log("API Response:", JSON.stringify(data));
+
+              let reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (!reply) {
+                reply = "Unable to generate a response. Please rephrase the query.";
+              }
 
               if (context.eventName === 'issues') {
                 await github.rest.issues.createComment({
@@ -101,14 +92,6 @@ jobs:
                   repo: context.repo.repo,
                   issue_number: context.issue.number,
                   body: reply
-                });
-              } else if (context.eventName === 'pull_request_target') {
-                await github.rest.pulls.createReview({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  pull_number: context.issue.number,
-                  body: reply,
-                  event: 'COMMENT'
                 });
               }
             } catch (err) {
