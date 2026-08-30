@@ -26,7 +26,7 @@
 This project is currently in **Beta testing**. If you are testing this build, please keep the following in mind:
 
 * **Focus Area:** Please test basic movement, player connectivity, and stability over your local network (LAN).
-* **Known Issues:** Worldwide online multiplayer is currently locked until LAN synchronization is fully optimized.
+* **Known Issues:** Worldwide online multiplayer is currently in extreme testing and will be less worked on until LAN synchronization is fully optimized.
 * **Reporting Bugs:** If you encounter crashes, disconnects, or unexpected bugs, please let us know!
 
 ---
