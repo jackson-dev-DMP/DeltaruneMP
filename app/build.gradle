@@ -1,0 +1,24 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.deltarunemp.launcher'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.deltarunemp.launcher"
+        minSdk 24
+        targetSdk 34
+        versionCode 10106
+        versionName "1.1.6"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+}
