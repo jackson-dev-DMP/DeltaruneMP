@@ -34,8 +34,10 @@ This project is currently in **Beta testing**. If you are testing this build, pl
 ## 📜 Copyright & License
 
 Copyright (c) 2026 DeltaruneMP. All rights reserved.
+Before Doing anything View the license for permissions.   
+   ↓       ↓
 
-This software and its associated documentation files are the sole property of the copyright holder. No permission is granted to copy, modify, merge, publish, distribute, sublicense, or sell copies of this software without explicit written permission.
+[License](https://github.com/jackson-dev-DMP/DeltaruneMP?tab=License-1-ov-file#restrictions)
 
 ---
 
