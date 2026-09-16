@@ -19,7 +19,7 @@ _____________________________________________________________
 FOR PERMISSION REQUESTS:
 To request custom permissions, redistribution rights, or commercial licenses, 
 please start a thread in the GitHub Discussions section of the repository:
-https://github.com/jackson-dev-DMP/DeltaruneMP/discussions
+[Create a discussion To ask for custom permissions.](https://github.com/jackson-dev-DMP/DeltaruneMP/discussions)
 _____________________________________________________________
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
